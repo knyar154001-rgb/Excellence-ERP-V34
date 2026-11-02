@@ -105,7 +105,7 @@ def initdb():
 def audit(user,action,details=''):
  with connect() as c:c.execute('INSERT INTO audit(username,action,details) VALUES(?,?,?)',(user,action,details[:1000]))
 class H(BaseHTTPRequestHandler):
- server_version='ExcellenceERP/34'
+ server_version='ExcellenceERP/35'
  def log_message(self,*a): pass
  def send(self,status,obj,extra=None):
   b=json.dumps(obj,ensure_ascii=False).encode(); self.send_response(status); self.send_header('Content-Type','application/json; charset=utf-8'); self.send_header('Content-Length',str(len(b))); self.send_header('X-Content-Type-Options','nosniff'); self.send_header('Cache-Control','no-store'); self.send_header('Content-Security-Policy',"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'");
@@ -177,4 +177,8 @@ class H(BaseHTTPRequestHandler):
     c.execute('UPDATE users SET password_hash=? WHERE username=?',(hashpw(new),u))
    audit(u,'PASSWORD_CHANGED'); return self.send(200,{'ok':True})
   return self.send(404,{'error':'Not found'})
-initdb(); print(f'Excellence ERP V35 backend running at http://{HOST}:{PORT}')
+server_version='ExcellenceERP/35'
+
+initdb()
+print(f'Excellence ERP V35 backend running at http://{HOST}:{PORT}')
+ThreadingHTTPServer((HOST, PORT), H).serve_forever()
