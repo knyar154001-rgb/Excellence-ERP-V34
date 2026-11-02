@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Excellence ERP V34 starter backend. Python standard library only."""
-import json, os, sqlite3, secrets, hashlib, hmac, time
+import json, os, sqlite3, secrets, hashlib, hmac, time, tempfile
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from http.cookies import SimpleCookie
 from urllib.parse import urlparse
@@ -134,7 +134,79 @@ class H(BaseHTTPRequestHandler):
     })
   u=self.user()
   if not u:return self.send(401,{'error':'Login required'})
-  if path=='/api/me': return self.send(200,{'username':u})
+  
+  if path == '/api/backup':
+   backup_path = None
+   source = None
+   target = None
+   response_started = False
+
+   try:
+    with tempfile.NamedTemporaryFile(
+        prefix='erp-backup-',
+        suffix='.sqlite3',
+        dir=str(DATA_DIR),
+        delete=False
+    ) as tmp:
+     backup_path = tmp.name
+
+    source = connect()
+    target = sqlite3.connect(backup_path)
+    source.backup(target)
+
+    check = target.execute('PRAGMA integrity_check').fetchone()[0]
+    if check != 'ok':
+     raise sqlite3.DatabaseError('Backup integrity check failed')
+
+    target.close()
+    target = None
+    source.close()
+    source = None
+
+    size = os.path.getsize(backup_path)
+    filename = time.strftime(
+        'excellence_erp_backup_%Y%m%d_%H%M%S.sqlite3',
+        time.gmtime()
+    )
+
+    audit(u, 'DATABASE_BACKUP', f'{size} bytes')
+
+    self.send_response(200)
+    self.send_header('Content-Type', 'application/vnd.sqlite3')
+    self.send_header('Content-Length', str(size))
+    self.send_header(
+        'Content-Disposition',
+        f'attachment; filename="{filename}"'
+    )
+    self.send_header('Cache-Control', 'no-store')
+    self.send_header('X-Content-Type-Options', 'nosniff')
+    self.end_headers()
+    response_started = True
+
+    with open(backup_path, 'rb') as backup_file:
+     while True:
+      chunk = backup_file.read(65536)
+      if not chunk:
+       break
+      self.wfile.write(chunk)
+    return
+
+   except Exception:
+    if not response_started:
+     return self.send(500, {
+         'error': 'Database backup failed. Please try again.'
+     })
+    return
+
+   finally:
+    if target:
+     target.close()
+    if source:
+     source.close()
+    if backup_path and os.path.exists(backup_path):
+     os.remove(backup_path)
+  if path=='/api/me':
+   return self.send(200,{'username':u})
   if path=='/api/products':
    with connect() as c: rows=[dict(r) for r in c.execute('SELECT * FROM products ORDER BY id DESC LIMIT 1000')]
    return self.send(200,{'products':rows})
