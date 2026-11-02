@@ -20,11 +20,15 @@ def verify(pw,stored):
 def initdb():
  with connect() as c:
   c.executescript('''CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,username TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'admin',created_at TEXT DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS products(id INTEGER PRIMARY KEY,sku TEXT UNIQUE NOT NULL,name TEXT NOT NULL,barcode TEXT DEFAULT '',unit TEXT DEFAULT 'pcs',cost REAL NOT NULL DEFAULT 0,price REAL NOT NULL DEFAULT 0,stock REAL NOT NULL DEFAULT 0,created_at TEXT DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,username TEXT,action TEXT,details TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS sales(id INTEGER PRIMARY KEY,invoice_no TEXT UNIQUE NOT NULL,total REAL NOT NULL,paid REAL NOT NULL DEFAULT 0,payment_method TEXT DEFAULT 'Cash',created_by TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);''')
+  username=os.environ.get('ERP_ADMIN_USER','admin')
+  password=os.environ.get('ERP_ADMIN_PASSWORD','')
   if not c.execute('SELECT 1 FROM users LIMIT 1').fetchone():
-   username=os.environ.get('ERP_ADMIN_USER','admin'); password=os.environ.get('ERP_ADMIN_PASSWORD','')
    if not password:
-    password=secrets.token_urlsafe(15); (BASE/'FIRST_LOGIN.txt').write_text(f'Initial administrator login\nUsername: {username}\nPassword: {password}\nChange this password after first login.\n',encoding='utf-8')
+    password=secrets.token_urlsafe(15)
+    (BASE/'FIRST_LOGIN.txt').write_text(f'Initial administrator login\nUsername: {username}\nPassword: {password}\nChange this password after first login.\n',encoding='utf-8')
    c.execute('INSERT INTO users(username,password_hash,role) VALUES(?,?,?)',(username,hashpw(password),'admin'))
+  elif password and c.execute('SELECT 1 FROM users WHERE username=?',(username,)).fetchone():
+   c.execute('UPDATE users SET password_hash=? WHERE username=?',(hashpw(password),username))
 def audit(user,action,details=''):
  with connect() as c:c.execute('INSERT INTO audit(username,action,details) VALUES(?,?,?)',(user,action,details[:1000]))
 class H(BaseHTTPRequestHandler):
