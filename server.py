@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from pathlib import Path
 BASE=Path(__file__).resolve().parent
 DB=BASE/'excellence_erp.db'
-HOST=os.environ.get('ERP_HOST','127.0.0.1'); PORT=int(os.environ.get('ERP_PORT','8080'))
+HOST=os.environ.get('ERP_HOST','0.0.0.0'); PORT=int(os.environ.get('PORT',os.environ.get('ERP_PORT','10000')))
 SESSIONS={}
 def connect():
  c=sqlite3.connect(DB); c.row_factory=sqlite3.Row; c.execute('PRAGMA foreign_keys=ON'); return c
