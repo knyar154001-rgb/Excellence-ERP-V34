@@ -5,12 +5,23 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from http.cookies import SimpleCookie
 from urllib.parse import urlparse
 from pathlib import Path
-BASE=Path(__file__).resolve().parent
-DB=BASE/'excellence_erp.db'
+BASE = Path(__file__).resolve().parent
+
+DATA_DIR = Path(
+    os.environ.get('ERP_DATA_DIR', str(BASE))
+).expanduser()
+
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+DB = DATA_DIR / 'excellence_erp.db'
 HOST=os.environ.get('ERP_HOST','0.0.0.0'); PORT=int(os.environ.get('PORT',os.environ.get('ERP_PORT','10000')))
 SESSIONS={}
 def connect():
- c=sqlite3.connect(DB); c.row_factory=sqlite3.Row; c.execute('PRAGMA foreign_keys=ON'); return c
+    c = sqlite3.connect(DB, timeout=30)
+    c.row_factory = sqlite3.Row
+    c.execute('PRAGMA foreign_keys=ON')
+    c.execute('PRAGMA busy_timeout=30000')
+    return c
 def hashpw(pw,salt=None):
  salt=salt or secrets.token_hex(16); digest=hashlib.pbkdf2_hmac('sha256',pw.encode(),salt.encode(),240000).hex(); return salt+'$'+digest
 def verify(pw,stored):
@@ -79,7 +90,7 @@ def initdb():
 
         elif not c.execute('SELECT 1 FROM users LIMIT 1').fetchone():
             password = secrets.token_urlsafe(15)
-            (BASE / 'FIRST_LOGIN.txt').write_text(
+            (DATA_DIR / 'FIRST_LOGIN.txt').write_text(
                 f'Initial administrator login\n'
                 f'Username: {username}\n'
                 f'Password: {password}\n'
@@ -114,7 +125,13 @@ class H(BaseHTTPRequestHandler):
   path=urlparse(self.path).path
   if path=='/':
    p=BASE/'index.html'; b=p.read_bytes(); self.send_response(200); self.send_header('Content-Type','text/html; charset=utf-8'); self.send_header('Content-Length',str(len(b))); self.end_headers(); self.wfile.write(b); return
-  if path=='/api/health': return self.send(200,{'ok':True,'version':'34','database':'sqlite-local-server','note':'This is a local backend, not public cloud hosting.'})
+  if path == '/api/health':
+    return self.send(200, {
+        'ok': True,
+        'version': '35',
+        'database': 'sqlite',
+        'storage': 'configured'
+    })
   u=self.user()
   if not u:return self.send(401,{'error':'Login required'})
   if path=='/api/me': return self.send(200,{'username':u})
@@ -156,8 +173,8 @@ class H(BaseHTTPRequestHandler):
    if len(new)<12:return self.send(400,{'error':'New password must be at least 12 characters'})
    with connect() as c:
     r=c.execute('SELECT password_hash FROM users WHERE username=?',(u,)).fetchone()
-    if not r or not verify(old,r['password_hash']):return self.send(400,{'error':'Current password is incorrect'})
+    if not r or not verify(old, r['password_hash']):return self.send(400,{'error':'Current password is incorrect'})
     c.execute('UPDATE users SET password_hash=? WHERE username=?',(hashpw(new),u))
    audit(u,'PASSWORD_CHANGED'); return self.send(200,{'ok':True})
   return self.send(404,{'error':'Not found'})
-initdb(); print(f'Excellence ERP V34 backend running at http://{HOST}:{PORT}'); ThreadingHTTPServer((HOST,PORT),H).serve_forever()
+initdb(); print(f'Excellence ERP V35 backend running at http://{HOST}:{PORT}')
